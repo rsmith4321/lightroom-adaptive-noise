@@ -94,7 +94,7 @@ Tasks.startAsyncTask(function()
         -- Explicit rows keep this compatible with Lightroom's Lua 5.1 runtime.
         local content = f:column {
             bind_to_object = props, spacing = 9,
-            f:static_text { title = #photos .. ' selected photos. Settings are remembered separately for each camera.' },
+            f:static_text { title = #photos .. (#photos == 1 and ' selected photo.' or ' selected photos.') .. ' Settings are remembered separately for each camera.' },
             f:row { f:static_text { title = 'Camera', width_in_chars = 27 }, f:popup_menu { value = bind 'camera', items = items, width_in_chars = 38 } },
             f:checkbox { title = 'Enable this camera', value = bind 'enabled' },
             f:checkbox { title = 'Also adjust non-RAW photos from this camera', value = bind 'includeNonRaw' },
@@ -142,12 +142,12 @@ Tasks.startAsyncTask(function()
             },
             f:static_text { title = 'Apply replaces the enabled noise reduction values, including any manual NR edits.\nA before snapshot is saved for each changed photo. Cancel leaves all photos unchanged.', height_in_lines = 2 },
         }
-        if Dialogs.presentModalDialog { title = 'Preview Adaptive Noise', contents = preview, actionVerb = 'Apply ' .. #plan.changes .. ' changes' } ~= 'ok' then return end
+        if Dialogs.presentModalDialog { title = 'Preview Adaptive Noise', contents = preview, actionVerb = 'Apply ' .. #plan.changes .. (#plan.changes == 1 and ' change' or ' changes') } ~= 'ok' then return end
         local runId = string.format('%.6f', Date.currentTime())
         local applying = Progress { title = 'Adaptive Noise: applying changes', functionContext = context }
         local result = Batch.apply(catalog, plan, applying, runId)
-        local report = string.format('%d changes confirmed in Lightroom.\n%d already matched; %d skipped in preview.\n%d changed since preview; %d failed; %d unverified; %d not attempted after Cancel.',
-            result.applied, plan.unchanged, plan.skipped, result.stale, result.failed, result.unverified, result.cancelled)
+        local report = string.format('%d change%s confirmed in Lightroom.\n%d already matched; %d skipped in preview.\n%d changed since preview; %d failed; %d unverified; %d not attempted after Cancel.',
+            result.applied, result.applied == 1 and '' or 's', plan.unchanged, plan.skipped, result.stale, result.failed, result.unverified, result.cancelled)
         if #result.details > 0 then
             local details = {}
             for i = 1, math.min(#result.details, 20) do details[i] = result.details[i] end

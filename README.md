@@ -4,7 +4,7 @@ A small, open-source **Lightroom Classic** plugin that sets noise reduction from
 
 Select photos, choose your camera's settings, preview the proposed values, then apply. Every changed photo gets a before snapshot. The result reports confirmed changes, photos that already match, skipped photos, errors, and any writes Lightroom did not confirm.
 
-**Status: early preview.** Automated tests cover calculations and the write workflow. See [VALIDATION.md](VALIDATION.md) for the actual Lightroom runtime checks and remaining limitations. Back up your catalog before trying an early version.
+**Status: early preview, tested in Lightroom Classic 15.6 on macOS.** Actual Lightroom tests passed on three generated JPEGs and a private copy of a Sony a7 IV DNG. Automated tests also cover calculations and the write workflow. See [VALIDATION.md](VALIDATION.md) for the checks and remaining limitations. Back up your catalog before trying an early version.
 
 ## Install
 

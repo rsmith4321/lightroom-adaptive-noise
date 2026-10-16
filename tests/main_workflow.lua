@@ -224,7 +224,7 @@ test('final Apply snapshots, uses narrow patches, reads back, and preserves unre
     local snapshot = assert(photo.snapshots[next(photo.snapshots)])
     assert(snapshot.LuminanceSmoothing == before.LuminanceSmoothing
         and snapshot.ColorNoiseReduction == before.ColorNoiseReduction)
-    assert(state.messages[#state.messages].text:find('1 changes confirmed', 1, true), 'Missing verified result')
+    assert(state.messages[#state.messages].text:find('1 change confirmed', 1, true), 'Missing verified result')
 end)
 
 test('change after preview is skipped without creating a snapshot', function()
