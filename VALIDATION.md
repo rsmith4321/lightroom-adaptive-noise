@@ -1,5 +1,12 @@
 # Validation
 
+## Version 1.1.2 tab layout checks — October 16, 2026
+
+- Lightroom Classic 15.6 on macOS rendered all three native tabs with the shared camera and ISO controls above them. Noise Reduction showed its controls side by side; Detail & Tone showed all four controls in a two-column grid; Skip Options showed all three skip choices. No settings scrolling was needed.
+- A temporary Texture value of **-4** remained visible after switching to Skip Options and back. Cancelling discarded the edit and did not process any photo.
+- **41 model/batch checks**, **25 skip/integration checks**, **17 workflow checks**, and the SDK contract harness pass under Lua 5.1 and Lua 5.5. The new workflow check verifies that tab changes retain edits, camera switching keeps independent profiles, global skips remain shared, and the tab selection is not saved as a camera adjustment. Processing from Skip Options applies enabled NR and Texture settings from the other tabs.
+
+
 ## Version 1.1.1 presentation checks — October 16, 2026
 
 - Added the existing ShootCal logo, project-name header, and an explicit Developed by ShootCal button linking to `https://shootcal.com/`. The same logo and attribution appear in the GitHub README.

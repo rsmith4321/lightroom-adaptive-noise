@@ -29,6 +29,7 @@ local function run(options)
         local result = { settings = { Exposure2012 = 2, Shadows2012 = 30,
             LuminanceSmoothing = 0, ColorNoiseReduction = 25, ProcessVersion = '15.4',
             CropTop = 0.2, Contrast2012 = 19, Temperature = 5100,
+            SharpenEdgeMasking = 0, Clarity2012 = 0, Texture = 0,
             MaskGroupBasedCorrections = { { preserved = true } } }, snapshots = {} }
         function result:getDevelopSettings()
             assert(state.inTask, 'Develop read escaped async task')
@@ -66,7 +67,8 @@ local function run(options)
                 'Unexpected history name or synchronous Auto flattening')
             local keys = 0
             for key, value in pairs(patch) do
-                assert(key == 'LuminanceSmoothing' or key == 'ColorNoiseReduction',
+                assert(key == 'LuminanceSmoothing' or key == 'ColorNoiseReduction'
+                    or key == 'SharpenEdgeMasking' or key == 'Contrast2012' or key == 'Clarity2012' or key == 'Texture',
                     'Unrelated adjustment in patch: ' .. tostring(key))
                 self.settings[key] = value; keys = keys + 1
             end
@@ -102,7 +104,7 @@ local function run(options)
 
     local factory = {}
     for _, kind in ipairs({ 'column', 'row', 'static_text', 'popup_menu',
-        'checkbox', 'separator', 'edit_field', 'scrolled_view', 'picture', 'spacer', 'push_button', 'group_box' }) do
+        'checkbox', 'separator', 'edit_field', 'scrolled_view', 'picture', 'spacer', 'push_button', 'group_box', 'tab_view', 'tab_view_item' }) do
         factory[kind] = function(_, specification)
             assert(specification.read_only == nil, 'Undocumented read_only property returned')
             specification.kind = kind
@@ -220,6 +222,30 @@ test('ShootCal attribution opens the public project without processing photos', 
     unchanged(state)
 end)
 
+test('feature tabs retain edits across tabs and keep camera profiles independent', function()
+    local Model = dofile(pluginPath .. '/NoiseModel.lua')
+    local first = Model.cameraKey('Alpha', 'Test Camera')
+    local second = Model.cameraKey('Beta', 'Test Camera')
+    local state = run { twoCameras = true, cancelPreview = true, editSettings = function(s, dialog)
+        s.props.exposurePoints = 7
+        s.props.featureTab = 'detail'
+        s.props.textureLow = -4
+        s.props.featureTab = 'skips'
+        s.props.skipAIDenoise = true
+        s.props.camera = second
+        assert(s.props.textureLow == 0 and s.props.exposurePoints == 5)
+        s.props.textureLow = -8
+        s.props.featureTab = 'noise'
+        s.props.camera = first
+        assert(s.props.textureLow == -4 and s.props.exposurePoints == 7 and s.props.skipAIDenoise)
+    end }
+    assert(state.prefs.profilesV1[first].textureLow == -4)
+    assert(state.prefs.profilesV1[second].textureLow == -8)
+    assert(state.prefs.profilesV1[first].featureTab == nil)
+    assert(state.prefs.skipOptionsV1.skipAIDenoise)
+    unchanged(state)
+end)
+
 test('no selection never requests whole-filmstrip target photos', function()
     local state = run { noSelection = true }
     assert(state.targetPhotosCalls == 0 and state.dialogs == 0)
@@ -283,6 +309,19 @@ test('Process with all controls disabled reports no changes without opening a pr
     unchanged(state)
     assert(state.dialogs == 1 and not state.previewDialog)
     assert(state.messages[#state.messages].title == 'Adaptive Noise: no changes')
+end)
+
+test('Process from Skip Options applies enabled adjustments from every feature tab', function()
+    local state = run { directProcess = true, editSettings = function(s)
+        s.props.featureTab = 'detail'
+        s.props.textureEnabled = true
+        s.props.textureLow = -4; s.props.textureHigh = -4
+        s.props.featureTab = 'skips'
+    end }
+    assert(state.writes == 1 and state.snapshots == 1 and not state.previewDialog)
+    assert(state.photos[1].settings.LuminanceSmoothing == 38)
+    assert(state.photos[1].settings.Texture == -4)
+    assert(state.photos[1].settings.Contrast2012 == 19)
 end)
 
 test('change after preview is skipped without creating a snapshot', function()

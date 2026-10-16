@@ -98,7 +98,7 @@ Tasks.startAsyncTask(function()
                 min = minimum or 0, max = maximum or 100, enabled = enabled and bind(enabled) or nil }
         end
         local function label(title)
-            return f:static_text { title = title, width_in_chars = 29 }
+            return f:static_text { title = title, width_in_chars = 18 }
         end
         local function section(title, children)
             children.title, children.spacing, children.margin = title, 8, 14
@@ -117,48 +117,66 @@ Tasks.startAsyncTask(function()
                     action = function() Http.openUrlInBrowser('https://shootcal.com/') end },
             }
         end
-        local contentSpec = { bind_to_object = props, spacing = 14, margin = 16,
-            section('Camera and ISO', {
-                f:row { label('Camera'), f:popup_menu { value = bind 'camera', items = items, width_in_chars = 38 } },
+        local cameraSection = section('Camera and ISO', {
+            f:row { label('Camera'), f:popup_menu { value = bind 'camera', items = items, width_in_chars = 38 } },
+            f:row { spacing = 20,
                 f:checkbox { title = 'Enable this camera', value = bind 'enabled' },
-                f:checkbox { title = 'Also adjust non-RAW photos from this camera', value = bind 'includeNonRaw' },
-                f:row { label('ISO range'), number('isoLow', 1, 10000000), f:static_text { title = 'to' }, number('isoHigh', 1, 10000000) },
-                f:checkbox { title = 'Use logarithmic ISO scale (unchecked = linear)', value = bind 'logarithmic' },
-            }),
-            section('Luminance noise reduction', {
-                f:checkbox { title = 'Adjust luminance noise reduction', value = bind 'luminanceEnabled' },
-                f:row { label('At low / high ISO'), number('luminanceLow', nil, nil, 'luminanceEnabled'), number('luminanceHigh', nil, nil, 'luminanceEnabled') },
-                f:row { label('Per +1 Exposure / +10 Shadows'), number('exposurePoints', nil, nil, 'luminanceEnabled'), number('shadowPoints', nil, nil, 'luminanceEnabled') },
-                f:row { label('Maximum luminance NR'), number('luminanceCap', nil, nil, 'luminanceEnabled') },
-            }),
-            section('Color noise reduction', {
-                f:checkbox { title = 'Adjust color noise reduction (ISO only)', value = bind 'colorEnabled' },
-                f:row { label('At low / high ISO'), number('colorLow', nil, nil, 'colorEnabled'), number('colorHigh', nil, nil, 'colorEnabled') },
-                f:row { label('Maximum color NR'), number('colorCap', nil, nil, 'colorEnabled') },
-            }),
-        }
+                f:checkbox { title = 'Also adjust non-RAW photos', value = bind 'includeNonRaw' },
+            },
+            f:row { label('ISO range'), number('isoLow', 1, 10000000), f:static_text { title = 'to' }, number('isoHigh', 1, 10000000),
+                f:checkbox { title = 'Logarithmic scale', value = bind 'logarithmic' },
+            },
+        })
+        local luminanceSection = section('Luminance noise reduction', {
+            f:checkbox { title = 'Adjust luminance noise reduction', value = bind 'luminanceEnabled' },
+            f:row { label('At low / high ISO'), number('luminanceLow', nil, nil, 'luminanceEnabled'), number('luminanceHigh', nil, nil, 'luminanceEnabled') },
+            f:row { label('Exposure / Shadows'), number('exposurePoints', nil, nil, 'luminanceEnabled'), number('shadowPoints', nil, nil, 'luminanceEnabled') },
+            f:row { label('Maximum value'), number('luminanceCap', nil, nil, 'luminanceEnabled') },
+        })
+        local colorSection = section('Color noise reduction', {
+            f:checkbox { title = 'Adjust color noise reduction (ISO only)', value = bind 'colorEnabled' },
+            f:row { label('At low / high ISO'), number('colorLow', nil, nil, 'colorEnabled'), number('colorHigh', nil, nil, 'colorEnabled') },
+            f:row { label('Maximum value'), number('colorCap', nil, nil, 'colorEnabled') },
+        })
+        local detailSections = {}
         for _, control in ipairs(Model.extraControls()) do
             local id = control.id
-            contentSpec[#contentSpec + 1] = section(control.label, {
+            detailSections[#detailSections + 1] = section(control.label, {
                 f:checkbox { title = 'Adjust ' .. control.label, value = bind(id .. 'Enabled') },
-                f:row { label('At low / high ISO'), number(id .. 'Low', control.min, control.max, id .. 'Enabled'), number(id .. 'High', control.min, control.max, id .. 'Enabled'),
-                    f:static_text { title = control.min < 0 and '(-100 to +100)' or '(0 to 100)' } },
-                f:row { label('Per +1 Exposure / +10 Shadows'), number(id .. 'ExposurePoints', control.min, control.max, id .. 'Enabled'), number(id .. 'ShadowPoints', control.min, control.max, id .. 'Enabled') },
+                f:row { label('At low / high ISO'), number(id .. 'Low', control.min, control.max, id .. 'Enabled'), number(id .. 'High', control.min, control.max, id .. 'Enabled') },
+                f:row { label('Exposure / Shadows'), number(id .. 'ExposurePoints', control.min, control.max, id .. 'Enabled'), number(id .. 'ShadowPoints', control.min, control.max, id .. 'Enabled') },
                 f:row { label(control.min < 0 and 'Maximum magnitude' or 'Maximum value'), number(id .. 'Cap', nil, nil, id .. 'Enabled') },
             })
         end
-        contentSpec[#contentSpec + 1] = section('Optional skips', {
+        local skipSection = section('Optional skips', {
             f:static_text { title = 'Apply to all cameras in this batch. Each option is off by default.', size = 'small' },
             f:checkbox { title = 'Skip photos previously processed by Adaptive Noise (recovery snapshot present)', value = bind 'skipProcessed' },
             f:checkbox { title = 'Skip photos with existing manual noise reduction adjustments', value = bind 'skipManualNR' },
             f:static_text { title = 'Manual NR includes presets and import settings that differ from usual defaults.\nLuminance 0; Color 25 for RAW/DNG, 0 otherwise; Detail 50, Contrast 0, Smoothness 50.', height_in_lines = 2, size = 'small' },
             f:checkbox { title = 'Skip photos with AI Denoise applied (also skips uncertain AI enhancement state)', value = bind 'skipAIDenoise' },
         })
+        props.featureTab = 'noise'
+        local function tab(identifier, title, children)
+            children.margin, children.spacing = 16, 12
+            return f:tab_view_item { identifier = identifier, title = title, f:column(children) }
+        end
         local content = f:column { bind_to_object = props, spacing = 12, margin = 8,
             header(),
             f:static_text { title = #photos .. (#photos == 1 and ' selected photo' or ' selected photos') .. '  |  Settings saved separately for each camera', size = 'small' },
-            f:scrolled_view { width = 850, height = 500, f:column(contentSpec) },
-            f:static_text { title = 'Preview to review, or Process to apply. Each changed photo gets a recovery snapshot.', size = 'small' },
+            cameraSection,
+            f:tab_view { value = bind 'featureTab', width = 850,
+                tab('noise', 'Noise Reduction', {
+                    f:static_text { title = 'Exposure / Shadows adds points per +1 Exposure stop and per +10 Shadows.', size = 'small' },
+                    f:row { spacing = 14, luminanceSection, colorSection },
+                }),
+                tab('detail', 'Detail & Tone', {
+                    f:static_text { title = 'Exposure / Shadows adds points per +1 Exposure stop and per +10 Shadows.\nSharpening Mask: 0 to 100. Contrast, Clarity, Texture: -100 to +100.', size = 'small', height_in_lines = 2 },
+                    f:row { spacing = 14, detailSections[1], detailSections[2] },
+                    f:row { spacing = 14, detailSections[3], detailSections[4] },
+                }),
+                tab('skips', 'Skip Options', { skipSection }),
+            },
+            f:static_text { title = 'All enabled adjustments across all tabs are processed. Each changed photo gets a recovery snapshot.', size = 'small' },
         }
         local previewRequested
         while true do

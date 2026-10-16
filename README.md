@@ -29,7 +29,7 @@ This is for Lightroom **Classic**, not the cloud-based Lightroom application. Ph
 
 ## Version 1.1
 
-**Process** is the primary button; **Preview** is optional. The isolated self-test menu command has been removed.
+**Process** is the primary button; **Preview** is optional. Settings are grouped into **Noise Reduction**, **Detail & Tone**, and **Skip Options** tabs, with the camera and shared ISO range always visible above them. Process uses all enabled adjustments across every tab. The isolated self-test menu command has been removed.
 
 The familiar bulk-develop workflow covers **six controls**: luminance NR, color NR, sharpening masking, contrast, clarity, and texture. Each added control has an independent enable checkbox, low/high ISO target values, Exposure/Shadows coefficients, and a cap. All share the camera's ISO range. Contrast, clarity, and texture support negative values, descending curves, and negative coefficients; their cap limits the magnitude in either direction. Added controls default off.
 

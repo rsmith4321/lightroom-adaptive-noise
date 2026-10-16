@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 — 2026-10-16
+
+- Replace the long settings column with Noise Reduction, Detail & Tone, and Skip Options tabs.
+- Keep shared camera and ISO settings visible above the tabs.
+- Arrange luminance/color controls side by side and the four detail/tone controls in a two-column grid.
+- Keep all enabled controls active when processing, regardless of the selected tab. Tab changes retain unsaved edits.
+
 ## 1.1.1 — 2026-10-16
 
 - Add the ShootCal logo, plugin name, and a Developed by ShootCal link above the settings.

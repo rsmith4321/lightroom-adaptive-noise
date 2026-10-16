@@ -7,7 +7,7 @@ return {
     LrToolkitIdentifier = 'com.ryansmith.lightroom.adaptive-noise',
     LrPluginName = 'Adaptive Noise',
     LrPluginInfoUrl = 'https://github.com/rsmith4321/lightroom-adaptive-noise',
-    VERSION = { major = 1, minor = 1, revision = 1, build = 1 },
+    VERSION = { major = 1, minor = 1, revision = 2, build = 1 },
     LrLibraryMenuItems = menuItems,
     LrExportMenuItems = menuItems,
 }
