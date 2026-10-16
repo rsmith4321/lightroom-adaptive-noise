@@ -1,5 +1,13 @@
 # Validation
 
+## Version 1.1 workflow checks — October 16, 2026
+
+- Process is the primary settings action and bypasses the preview dialog. Preview remains a separate button and requires Process before writing. Both use the existing validation and protected batch implementation.
+- **41 model/batch checks**, **25 skip/integration checks**, **14 Main workflow checks**, and the strict SDK contract harness pass under Lua 5.1 and Lua 5.5. New workflow coverage checks direct processing with snapshots/readback, validation before writes, and no-change processing. Existing tests cover preview cancellation and stale-input protection.
+- Lightroom Classic 15.6 on macOS loaded version **1.1.0.1**, enabled with no diagnostic messages. The File menu contained the normal plugin command and no isolated self-test command. The settings dialog visibly displayed Preview, Cancel, and Process.
+- Clicking Preview and, in a separate run, Process on the already-matching selection each reported **0 to change; 1 already match; 0 skipped**. These native checks made no photo adjustments. Direct Process writes are covered by automated workflow tests; the shared write implementation retains the earlier live evidence below.
+
+
 ## Version 0.2 review and runtime checks — October 16, 2026
 
 An independent Astra review inspected the full implementation and tests. The reliability findings, fixes, and non-blocking follow-ups are recorded in [REVIEW.md](REVIEW.md).

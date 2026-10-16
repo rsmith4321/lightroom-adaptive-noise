@@ -141,9 +141,11 @@ Tasks.startAsyncTask(function()
         local content = f:column { bind_to_object = props,
             f:scrolled_view { width = 850, height = 560, f:column(contentSpec) },
         }
+        local previewRequested
         while true do
-            local answer = Dialogs.presentModalDialog { title = 'Adaptive Noise Reduction', contents = content, actionVerb = 'Preview changes' }
-            if answer ~= 'ok' then return end
+            local answer = Dialogs.presentModalDialog { title = 'Adaptive Noise Reduction', contents = content, actionVerb = 'Process', otherVerb = 'Preview' }
+            if answer ~= 'ok' and answer ~= 'other' then return end
+            previewRequested = answer == 'other'
             save(active)
             local invalid
             for _, item in ipairs(items) do
@@ -182,18 +184,20 @@ Tasks.startAsyncTask(function()
         end
         if #plan.changes > 100 then lines[#lines + 1] = 'Showing the first 100 changes of ' .. #plan.changes .. '.' end
         if #plan.changes == 0 then Dialogs.message('Adaptive Noise: no changes', table.concat(lines, '\n'), 'info'); return end
-        local preview = f:column { spacing = 9,
-            f:static_text { title = summary },
-            f:scrolled_view { width = 780, height = 320,
-                f:static_text { title = table.concat(lines, '\n'), width_in_chars = 170, height_in_lines = #lines + 1 },
-            },
-            f:static_text { title = 'Apply replaces the enabled adjustment values, including previous manual edits.\nA before snapshot is saved for each changed photo. Cancel leaves all photos unchanged.', height_in_lines = 2 },
-        }
-        if Dialogs.presentModalDialog { title = 'Preview Adaptive Noise', contents = preview, actionVerb = 'Apply ' .. #plan.changes .. (#plan.changes == 1 and ' change' or ' changes') } ~= 'ok' then return end
+        if previewRequested then
+            local preview = f:column { spacing = 9,
+                f:static_text { title = summary },
+                f:scrolled_view { width = 780, height = 320,
+                    f:static_text { title = table.concat(lines, '\n'), width_in_chars = 170, height_in_lines = #lines + 1 },
+                },
+                f:static_text { title = 'Process replaces the enabled adjustment values, including previous manual edits.\nA before snapshot is saved for each changed photo. Cancel leaves all photos unchanged.', height_in_lines = 2 },
+            }
+            if Dialogs.presentModalDialog { title = 'Preview Adaptive Noise', contents = preview, actionVerb = 'Process' } ~= 'ok' then return end
+        end
         local runId = string.format('%.6f', Date.currentTime())
         local applying = Progress { title = 'Adaptive Noise: applying changes', functionContext = context }
         local result = Batch.apply(catalog, plan, applying, runId)
-        local report = string.format('%d change%s confirmed in Lightroom.\n%d already matched; %d skipped in preview.\n%d changed since preview; %d protected by a skip rule after preview.\n%d failed; %d unverified; %d not attempted after Cancel.',
+        local report = string.format('%d change%s confirmed in Lightroom.\n%d already matched; %d skipped.\n%d changed since reading; %d protected by a skip rule before processing.\n%d failed; %d unverified; %d not attempted after Cancel.',
             result.applied, result.applied == 1 and '' or 's', plan.unchanged, plan.skipped, result.stale, result.protected, result.failed, result.unverified, result.cancelled)
         if #result.details > 0 then
             local details = {}

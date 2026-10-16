@@ -1,7 +1,5 @@
 local menuItems = {
     { title = 'Adaptive Noise Reduction...', file = 'Main.lua' },
-    { title = 'Adaptive Noise: Run isolated self-test...', file = 'SelfTest.lua' },
-
 }
 return {
     LrSdkVersion = 6.0,
@@ -9,7 +7,7 @@ return {
     LrToolkitIdentifier = 'com.ryansmith.lightroom.adaptive-noise',
     LrPluginName = 'Adaptive Noise',
     LrPluginInfoUrl = 'https://github.com/rsmith4321/lightroom-adaptive-noise',
-    VERSION = { major = 0, minor = 2, revision = 0, build = 1 },
+    VERSION = { major = 1, minor = 1, revision = 0, build = 1 },
     LrLibraryMenuItems = menuItems,
     LrExportMenuItems = menuItems,
 }

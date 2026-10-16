@@ -4,11 +4,11 @@
 
 [Release notes](https://github.com/rsmith4321/lightroom-adaptive-noise/releases/latest) · [Installation](#install) · [Validation](VALIDATION.md)
 
-An open-source **Lightroom Classic** plugin for ISO-aware noise reduction, sharpening masking, contrast, clarity, and texture. It calculates fresh targets from ISO and your existing Exposure/Shadows adjustments, then previews the changes before applying them.
+An open-source **Lightroom Classic** plugin for ISO-aware noise reduction, sharpening masking, contrast, clarity, and texture. It calculates fresh targets from ISO and your existing Exposure/Shadows adjustments, offers a preview or processes the selection directly.
 
-Select photos, choose your camera's settings, preview the proposed values, then apply. Every changed photo gets a before snapshot. The result reports confirmed changes, photos that already match, skipped photos, errors, and any writes Lightroom did not confirm.
+Select photos, choose your camera's settings, then click **Process** to apply them immediately or **Preview** to review the proposed values first. Preview makes no adjustments until you click **Process** in that dialog. Every changed photo gets a before snapshot. The result reports confirmed changes, photos that already match, skipped photos, errors, and any writes Lightroom did not confirm.
 
-**Status: preview software for Lightroom Classic.** The original noise-reduction workflow was tested in Lightroom Classic 15.6 on macOS using generated JPEGs and a separate Sony a7 IV DNG. Version 0.2 adds optional controls and skip rules; the exact validation scope is recorded separately. See [VALIDATION.md](VALIDATION.md) for the checks and remaining limitations. Back up your catalog before trying an early version.
+**Status: preview software for Lightroom Classic.** The original noise-reduction workflow was tested in Lightroom Classic 15.6 on macOS using generated JPEGs and a separate Sony a7 IV DNG. Version 1.1 includes optional controls and skip rules; the exact validation scope is recorded separately. See [VALIDATION.md](VALIDATION.md) for the checks and remaining limitations. Back up your catalog before trying an early version.
 
 ## Install
 
@@ -21,9 +21,11 @@ To update, replace the existing plugin folder with the extracted `AdaptiveNoise.
 
 This is for Lightroom **Classic**, not the cloud-based Lightroom application. It runs locally without a login, registration, subscription, network calls, or an external noise-reduction service. It uses Lightroom's manual develop controls; it does not run AI Denoise.
 
-## What is new in 0.2
+## Version 1.1
 
-The familiar bulk-develop workflow now covers **six controls**: luminance NR, color NR, sharpening masking, contrast, clarity, and texture. Each added control has an independent enable checkbox, low/high ISO target values, Exposure/Shadows coefficients, and a cap. All share the camera's ISO range. Contrast, clarity, and texture support negative values, descending curves, and negative coefficients; their cap limits the magnitude in either direction. Added controls default off.
+**Process** is the primary button; **Preview** is optional. The isolated self-test menu command has been removed.
+
+The familiar bulk-develop workflow covers **six controls**: luminance NR, color NR, sharpening masking, contrast, clarity, and texture. Each added control has an independent enable checkbox, low/high ISO target values, Exposure/Shadows coefficients, and a cap. All share the camera's ISO range. Contrast, clarity, and texture support negative values, descending curves, and negative coefficients; their cap limits the magnitude in either direction. Added controls default off.
 
 Three independent, remembered skip options also default **off**. They skip the whole photo, including any enabled contrast/clarity/texture controls:
 
@@ -70,7 +72,7 @@ Preview lists before/after values for up to 100 photos and counts the whole sele
 
 Before each adjustment, the plugin creates a snapshot named `Before Adaptive Noise <run ID>`. If a snapshot cannot be created, that photo is not adjusted. To restore a photo, open it in Develop and select that snapshot from the Snapshots panel. Lightroom's Undo/History is also available; separate operations may be grouped differently by Lightroom.
 
-If ISO, camera, process version, Exposure, Shadows, or any of the six current control values change after preview, that photo is skipped. Cancellation stops before the next photo; earlier confirmed changes remain and retain their recovery snapshots. A readback mismatch is reported as **unverified**, so a submitted write is never silently counted as a confirmed adjustment.
+If ISO, camera, process version, Exposure, Shadows, or any of the six current control values change after the initial reading, that photo is skipped on either path. Cancellation stops before the next photo; earlier confirmed changes remain and retain their recovery snapshots. A readback mismatch is reported as **unverified**, so a submitted write is never silently counted as a confirmed adjustment.
 
 ## Development and testing
 
@@ -85,7 +87,7 @@ lua tests/skip_policy.lua
 
 `NoiseModel.lua` contains the independent calculation. `PhotoAccess.lua` reads the SDK metadata/develop values. `Batch.lua` builds the preview plan and performs snapshot-protected writes. `Main.lua` provides the settings and preview dialogs. `SkipPolicy.lua` contains the explicit skip rules. See [REVIEW.md](REVIEW.md) for the review findings and fixes.
 
-The separate **Adaptive Noise: Run isolated self-test…** command imports the three tiny, generated JPEGs bundled under `fixtures/` and only adjusts those test images. It does not use the current photo selection. It checks actual slider readback, preservation, rerun behavior, and snapshot recovery. This command changes the catalog by adding test photos; use it only after a backup. Keep its fixture files in place while the catalog references them.
+`SelfTest.lua` and the generated fixtures remain in the source for development and the SDK contract harness. The self-test is not registered as a user-facing menu command.
 
 The SDK develop-settings interface is experimental and may change between Lightroom releases. Unit tests are not proof of a Lightroom runtime result, photo rendering quality, Windows compatibility, or compatibility with every camera/process version.
 

@@ -53,7 +53,7 @@ local function run(options)
         end
         function result:createDevelopSnapshot(name, replace)
             assert(state.inWrite, 'Snapshot escaped write gate')
-            assert(state.previewDialog and state.applyApproved, 'Snapshot occurred before final Apply')
+            assert(state.applyApproved, 'Snapshot occurred before Process approval')
             assert(replace == false, 'Existing snapshots may not be replaced')
             self.snapshots[name] = clone(self.settings)
             state.snapshots = state.snapshots + 1; event('snapshot')
@@ -89,7 +89,7 @@ local function run(options)
         return state.photos
     end
     function catalog:withWriteAccessDo(name, callback, timeout)
-        assert(state.applyApproved and state.previewDialog, 'Catalog write gate preceded final Apply')
+        assert(state.applyApproved, 'Catalog write gate preceded Process approval')
         assert(not state.inWrite, 'Nested write gate')
         assert(type(name) == 'string' and timeout.timeout > 0 and timeout.asynchronous == false,
             'Write gate must name operation, timeout, and wait for completion')
@@ -168,9 +168,16 @@ local function run(options)
                     end
                 end)
                 if options.editSettings then options.editSettings(state, dialog) end
-                return (options.cancelSettings or options.cancelSettingsAfter == state.settingsDialogs) and 'cancel' or 'ok'
+                assert(dialog.actionVerb == 'Process' and dialog.otherVerb == 'Preview', 'Missing Process/Preview buttons')
+                if options.cancelSettings or options.cancelSettingsAfter == state.settingsDialogs then return 'cancel' end
+                if options.directProcess then
+                    state.applyApproved = true; event('apply-approved')
+                    return 'ok'
+                end
+                return 'other'
             end
             assert(not state.previewDialog, 'Unexpected extra preview dialog')
+            assert(dialog.actionVerb == 'Process', 'Preview must offer Process')
             state.previewDialog = dialog
             if options.beforePreviewDecision then options.beforePreviewDecision(state) end
             if options.cancelPreview then return 'cancel' end
@@ -239,10 +246,34 @@ test('final Apply snapshots, uses narrow patches, reads back, and preserves unre
     assert(state.messages[#state.messages].text:find('1 change confirmed', 1, true), 'Missing verified result')
 end)
 
+test('primary Process applies directly with snapshot and readback, without a preview dialog', function()
+    local state = run { directProcess = true }
+    assert(state.dialogs == 1 and not state.previewDialog)
+    assert(state.writes == 1 and state.snapshots == 1 and state.readbacks >= 1)
+    assert(state.events[1] == 'apply-approved' and state.events[3] == 'snapshot'
+        and state.events[4] == 'patch')
+end)
+
+test('Process validates settings before any catalog write', function()
+    local state = run { directProcess = true, cancelSettingsAfter = 2,
+        editSettings = function(s) s.props.isoHigh = 0 end }
+    unchanged(state)
+    assert(state.settingsDialogs == 2 and not state.previewDialog and #state.messages == 1)
+end)
+
+test('Process with all controls disabled reports no changes without opening a preview', function()
+    local state = run { directProcess = true, editSettings = function(s)
+        s.props.luminanceEnabled = false; s.props.colorEnabled = false
+    end }
+    unchanged(state)
+    assert(state.dialogs == 1 and not state.previewDialog)
+    assert(state.messages[#state.messages].title == 'Adaptive Noise: no changes')
+end)
+
 test('change after preview is skipped without creating a snapshot', function()
     local state = run { beforePreviewDecision = function(s) s.photos[1].settings.Exposure2012 = 3 end }
     assert(state.writes == 0 and state.snapshots == 0)
-    assert(state.messages[#state.messages].text:find('1 changed since preview', 1, true))
+    assert(state.messages[#state.messages].text:find('1 changed since reading', 1, true))
 end)
 
 test('camera switch observer retains distinct numeric edits and saves both profiles', function()
