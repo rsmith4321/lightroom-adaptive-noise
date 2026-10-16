@@ -57,6 +57,7 @@ The source is ordinary Lua, compatible with Lightroom's Lua 5.1 runtime:
 ```sh
 lua tests/run.lua
 lua tests/sdk_contract.lua
+lua tests/main_workflow.lua
 ```
 
 `NoiseModel.lua` contains the independent calculation. `PhotoAccess.lua` reads the SDK metadata/develop values. `Batch.lua` builds the preview plan and performs snapshot-protected writes. `Main.lua` provides the settings and preview dialogs.

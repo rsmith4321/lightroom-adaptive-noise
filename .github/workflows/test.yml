@@ -9,3 +9,4 @@ jobs:
       - run: find AdaptiveNoise.lrplugin tests -name '*.lua' -exec luac5.1 -p {} \;
       - run: lua5.1 tests/run.lua
       - run: lua5.1 tests/sdk_contract.lua
+      - run: lua5.1 tests/main_workflow.lua
