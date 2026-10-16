@@ -1,19 +1,41 @@
 # Lightroom Adaptive Noise
 
-A small, open-source **Lightroom Classic** plugin that sets noise reduction from camera ISO and the Exposure and Shadows adjustments already on each photo.
+## [Download latest version — ready-to-install ZIP](https://github.com/rsmith4321/lightroom-adaptive-noise/releases/latest/download/AdaptiveNoise.zip)
+
+[Release notes](https://github.com/rsmith4321/lightroom-adaptive-noise/releases/latest) · [Installation](#install) · [Validation](VALIDATION.md)
+
+An open-source **Lightroom Classic** plugin for ISO-aware noise reduction, sharpening masking, contrast, clarity, and texture. It calculates fresh targets from ISO and your existing Exposure/Shadows adjustments, then previews the changes before applying them.
 
 Select photos, choose your camera's settings, preview the proposed values, then apply. Every changed photo gets a before snapshot. The result reports confirmed changes, photos that already match, skipped photos, errors, and any writes Lightroom did not confirm.
 
-**Status: early preview, tested in Lightroom Classic 15.6 on macOS.** Actual Lightroom tests passed on three generated JPEGs and a private copy of a Sony a7 IV DNG. Automated tests also cover calculations and the write workflow. See [VALIDATION.md](VALIDATION.md) for the checks and remaining limitations. Back up your catalog before trying an early version.
+**Status: preview software for Lightroom Classic.** The original noise-reduction workflow was tested in Lightroom Classic 15.6 on macOS using generated JPEGs and a separate Sony a7 IV DNG. Version 0.2 adds optional controls and skip rules; the exact validation scope is recorded separately. See [VALIDATION.md](VALIDATION.md) for the checks and remaining limitations. Back up your catalog before trying an early version.
 
 ## Install
 
-1. Download and extract the release ZIP, or download this repository using GitHub's **Code → Download ZIP**.
+1. **[Download AdaptiveNoise.zip](https://github.com/rsmith4321/lightroom-adaptive-noise/releases/latest/download/AdaptiveNoise.zip)** and extract it. This link always points to the current latest release.
 2. Keep the entire `AdaptiveNoise.lrplugin` folder together in a permanent location.
 3. In Lightroom Classic, open **File → Plug-in Manager → Add**, and choose that folder.
 4. Select photos in the Library module, then choose **File → Plug-in Extras → Adaptive Noise Reduction…**.
 
-This is for Lightroom **Classic**, not the cloud-based Lightroom application. It runs locally without a login, registration, subscription, network calls, or an external noise-reduction service. It uses Lightroom's manual luminance and color controls; it does not run AI Denoise.
+To update, replace the existing plugin folder with the extracted `AdaptiveNoise.lrplugin` folder, then click **Reload Plug-in** in Plug-in Manager. Keep the same plugin identity to retain saved camera settings. All four added controls and all three skip options start **off**; existing NR settings are retained.
+
+This is for Lightroom **Classic**, not the cloud-based Lightroom application. It runs locally without a login, registration, subscription, network calls, or an external noise-reduction service. It uses Lightroom's manual develop controls; it does not run AI Denoise.
+
+## What is new in 0.2
+
+The familiar bulk-develop workflow now covers **six controls**: luminance NR, color NR, sharpening masking, contrast, clarity, and texture. Each added control has an independent enable checkbox, low/high ISO target values, Exposure/Shadows coefficients, and a cap. All share the camera's ISO range. Contrast, clarity, and texture support negative values, descending curves, and negative coefficients; their cap limits the magnitude in either direction. Added controls default off.
+
+Three independent, remembered skip options also default **off**. They skip the whole photo, including any enabled contrast/clarity/texture controls:
+
+| Option | Behavior |
+| --- | --- |
+| Previously processed by this plugin | Skip a photo with a `Before Adaptive Noise …` recovery snapshot, including snapshots made by v0.1. This is conservative: restoring a snapshot, undoing, or an interrupted attempt can leave the snapshot present, so the photo remains protected. Uncheck this option to process it again. This does not inspect arbitrary Lightroom edit history. |
+| Existing manual noise reduction | Skip NR sliders that differ from usual defaults: luminance 0, color 25 for RAW/DNG or 0 otherwise, luminance/color detail 50, luminance contrast 0, color smoothness 50. Presets and custom import defaults count too; the SDK cannot prove who changed a slider. This option also protects prior plugin NR values if they differ from those defaults. |
+| AI Denoise | Skip detected AI Denoise and uncertain enhancement records. It reads photo settings, not filenames, and does not run AI processing. See [validation and AI limitations](VALIDATION.md) for supported evidence and remaining gaps. |
+
+If an enabled skip rule cannot read the information it needs, the photo is skipped with an explanation. Rules are checked again inside the catalog write gate, so a newly protected photo is not changed after preview.
+
+This independent implementation builds on the workflow popularized by Jeffrey Friedl's Bulk Develop Settings, with snapshot-aware rerun protection, conservative AI Denoise exclusion, and verified-write reporting. Jeffrey's plugin already offered per-control default-only checks; the whole-photo skip choices here have different semantics. This project does not claim complete feature parity with every option in that plugin.
 
 ## How the calculation works
 
@@ -40,15 +62,15 @@ The high-ISO endpoint and the final cap are different settings. Set the cap abov
 
 The plugin calculates a fresh target each time. It does **not** add these amounts to the existing NR value, so running it again with unchanged inputs makes no further adjustment. Re-run it after changing Exposure or Shadows if you want the NR targets updated.
 
-Settings are remembered per camera make/model in Lightroom's plugin preferences. Non-RAW photos are skipped unless enabled for that camera. DNGs are treated as RAW; this first version does not automatically identify HDR/panorama/AI-enhanced DNGs, so select those deliberately. Missing ISO or required develop values produces an explicit skip, not a guessed adjustment. There is also an optional logarithmic ISO scale.
+Settings are remembered per camera make/model in Lightroom's plugin preferences. Non-RAW photos are skipped unless enabled for that camera. DNGs are treated as RAW; HDR/panorama DNGs are not automatically excluded. The optional AI skip uses available enhancement metadata; older baked enhanced DNGs may not expose a usable marker and are not guaranteed to be recognized. Missing ISO or required develop values produces an explicit skip, not a guessed adjustment. There is also an optional logarithmic ISO scale.
 
 ## Preview, preservation, and recovery
 
-Preview lists before/after values for up to 100 photos and counts the whole selection. Applying replaces the **enabled noise reduction values**, including NR edits you previously made by hand. It only sends `LuminanceSmoothing` and/or `ColorNoiseReduction` to Lightroom; it does not send a complete develop-settings table or set the process version.
+Preview lists before/after values for up to 100 photos and counts the whole selection. Applying replaces the **enabled adjustment values**, including previous manual edits unless a skip option protects the photo. The only possible develop keys are `LuminanceSmoothing`, `ColorNoiseReduction`, `SharpenEdgeMasking`, `Contrast2012`, `Clarity2012`, and `Texture`; disabled controls are never included. It does not send a complete develop-settings table or set the process version.
 
 Before each adjustment, the plugin creates a snapshot named `Before Adaptive Noise <run ID>`. If a snapshot cannot be created, that photo is not adjusted. To restore a photo, open it in Develop and select that snapshot from the Snapshots panel. Lightroom's Undo/History is also available; separate operations may be grouped differently by Lightroom.
 
-If ISO, camera, process version, Exposure, Shadows, or current NR values change after preview, that photo is skipped. Cancellation stops before the next photo; earlier confirmed changes remain and retain their recovery snapshots. A readback mismatch is reported as **unverified**, so a submitted write is never silently counted as a confirmed adjustment.
+If ISO, camera, process version, Exposure, Shadows, or any of the six current control values change after preview, that photo is skipped. Cancellation stops before the next photo; earlier confirmed changes remain and retain their recovery snapshots. A readback mismatch is reported as **unverified**, so a submitted write is never silently counted as a confirmed adjustment.
 
 ## Development and testing
 
@@ -58,9 +80,10 @@ The source is ordinary Lua, compatible with Lightroom's Lua 5.1 runtime:
 lua tests/run.lua
 lua tests/sdk_contract.lua
 lua tests/main_workflow.lua
+lua tests/skip_policy.lua
 ```
 
-`NoiseModel.lua` contains the independent calculation. `PhotoAccess.lua` reads the SDK metadata/develop values. `Batch.lua` builds the preview plan and performs snapshot-protected writes. `Main.lua` provides the settings and preview dialogs.
+`NoiseModel.lua` contains the independent calculation. `PhotoAccess.lua` reads the SDK metadata/develop values. `Batch.lua` builds the preview plan and performs snapshot-protected writes. `Main.lua` provides the settings and preview dialogs. `SkipPolicy.lua` contains the explicit skip rules. See [REVIEW.md](REVIEW.md) for the review findings and fixes.
 
 The separate **Adaptive Noise: Run isolated self-test…** command imports the three tiny, generated JPEGs bundled under `fixtures/` and only adjusts those test images. It does not use the current photo selection. It checks actual slider readback, preservation, rerun behavior, and snapshot recovery. This command changes the catalog by adding test photos; use it only after a backup. Keep its fixture files in place while the catalog references them.
 

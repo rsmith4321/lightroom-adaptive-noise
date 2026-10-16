@@ -22,7 +22,8 @@ local function run(options)
     local savedPlugin, savedImport = _PLUGIN, import
     local state = { events = {}, snapshots = 0, writes = 0, gates = 0,
         targetPhotosCalls = 0, dialogs = 0, messages = {}, prefs = {},
-        photos = {}, inWrite = false, inTask = false, readbacks = 0 }
+        photos = {}, inWrite = false, inTask = false, readbacks = 0, settingsDialogs = 0 }
+    if options.savedProfiles ~= nil then state.prefs.profilesV1 = options.savedProfiles end
     local function event(name) state.events[#state.events + 1] = name end
     local function photo(camera, filename)
         local result = { settings = { Exposure2012 = 2, Shadows2012 = 30,
@@ -38,7 +39,10 @@ local function run(options)
             assert(state.inTask, 'Metadata read escaped async task')
             if key == 'cameraMake' then return camera end
             if key == 'cameraModel' then return 'Test Camera' end
-            if key == 'fileName' then return filename end
+            if key == 'fileName' then
+                if options.nameError then error('Filename temporarily unavailable') end
+                return filename
+            end
             error('Unsupported formatted key: ' .. tostring(key))
         end
         function result:getRawMetadata(key)
@@ -49,7 +53,7 @@ local function run(options)
         end
         function result:createDevelopSnapshot(name, replace)
             assert(state.inWrite, 'Snapshot escaped write gate')
-            assert(state.dialogs == 2 and state.applyApproved, 'Snapshot occurred before final Apply')
+            assert(state.previewDialog and state.applyApproved, 'Snapshot occurred before final Apply')
             assert(replace == false, 'Existing snapshots may not be replaced')
             self.snapshots[name] = clone(self.settings)
             state.snapshots = state.snapshots + 1; event('snapshot')
@@ -85,7 +89,7 @@ local function run(options)
         return state.photos
     end
     function catalog:withWriteAccessDo(name, callback, timeout)
-        assert(state.applyApproved and state.dialogs == 2, 'Catalog write gate preceded final Apply')
+        assert(state.applyApproved and state.previewDialog, 'Catalog write gate preceded final Apply')
         assert(not state.inWrite, 'Nested write gate')
         assert(type(name) == 'string' and timeout.timeout > 0 and timeout.asynchronous == false,
             'Write gate must name operation, timeout, and wait for completion')
@@ -146,19 +150,27 @@ local function run(options)
             state.dialogs = state.dialogs + 1
             assert(state.writes == 0 and state.snapshots == 0 and state.gates == 0,
                 'Photo mutation occurred while user was reviewing dialogs')
-            if state.dialogs == 1 then
+            if dialog.title == 'Adaptive Noise Reduction' then
+                state.settingsDialogs = state.settingsDialogs + 1
                 state.settingsDialog = dialog
                 state.props = dialog.contents.bind_to_object
                 visit(dialog.contents, function(control)
                     if control.kind == 'edit_field' then
                         assert(control.immediate == true,
                             'Numeric edit may retain old value when Preview/camera is clicked on macOS')
+                        local key = control.value.bindingKey
+                        if key == 'isoLow' or key == 'isoHigh' then
+                            assert(control.min == 1 and control.max == 10000000, 'ISO entry was limited by native 0-100 default')
+                        elseif key:match('^contrast') or key:match('^clarity') or key:match('^texture') then
+                            assert(control.min == (key:match('Cap$') and 0 or -100) and control.max == 100,
+                                'Signed adjustment entry rejected negative targets')
+                        else assert(control.min == 0 and control.max == 100) end
                     end
                 end)
                 if options.editSettings then options.editSettings(state, dialog) end
-                return options.cancelSettings and 'cancel' or 'ok'
+                return (options.cancelSettings or options.cancelSettingsAfter == state.settingsDialogs) and 'cancel' or 'ok'
             end
-            assert(state.dialogs == 2, 'Unexpected extra modal dialog')
+            assert(not state.previewDialog, 'Unexpected extra preview dialog')
             state.previewDialog = dialog
             if options.beforePreviewDecision then options.beforePreviewDecision(state) end
             if options.cancelPreview then return 'cancel' end
@@ -253,6 +265,63 @@ test('camera switch observer retains distinct numeric edits and saves both profi
     assert(state.prefs.profilesV1[firstKey].exposurePoints == 7)
     assert(state.prefs.profilesV1[secondKey].exposurePoints == 11)
     unchanged(state)
+end)
+
+test('a filename read error uses a fallback label and still completes the batch', function()
+    local state = run { nameError = true }
+    assert(state.writes == 1 and state.snapshots == 1)
+    local found = false
+    visit(state.previewDialog.contents, function(control)
+        if type(control.title) == 'string' and control.title:find('name unavailable', 1, true) then found = true end
+    end)
+    assert(found, 'Missing fallback identifier')
+end)
+
+test('invalid settings can be corrected without losing edits or touching photos early', function()
+    local state = run { editSettings = function(s)
+        if s.settingsDialogs == 1 then
+            s.props.isoHigh = s.props.isoLow
+            s.props.exposurePoints = 7
+        else
+            assert(s.settingsDialogs == 2 and #s.messages == 1, 'Expected one validation warning')
+            assert(s.props.exposurePoints == 7, 'Valid edits were lost')
+            s.props.isoHigh = 6400
+        end
+    end }
+    assert(state.settingsDialogs == 2 and state.dialogs == 3 and state.writes == 1)
+    assert(state.photos[1].settings.LuminanceSmoothing == 42)
+end)
+
+test('Cancel after validation failure persists no edits and writes no photos', function()
+    local state = run { editSettings = function(s)
+        if s.settingsDialogs == 1 then s.props.isoHigh = 0
+        else assert(s.settingsDialogs == 2 and #s.messages == 1) end
+    end, cancelSettingsAfter = 2 }
+    unchanged(state)
+    assert(state.settingsDialogs == 2 and state.prefs.profilesV1 == nil)
+end)
+
+test('malformed saved preferences fall back to editable defaults', function()
+    local state = run { savedProfiles = 42 }
+    assert(state.writes == 1 and type(state.prefs.profilesV1) == 'table')
+end)
+
+test('v0.1 camera preferences migrate without enabling extra controls or skip rules', function()
+    local Model = dofile(pluginPath .. '/NoiseModel.lua')
+    local key = Model.cameraKey('Alpha', 'Test Camera')
+    local old = { enabled = true, includeNonRaw = false, logarithmic = false,
+        isoLow = 100, isoHigh = 6400, luminanceEnabled = true,
+        luminanceLow = 0, luminanceHigh = 40, luminanceCap = 40,
+        exposurePoints = 7, shadowPoints = 1, colorEnabled = false,
+        colorLow = 25, colorHigh = 40, colorCap = 100 }
+    local state = run { savedProfiles = { [key] = old }, cancelPreview = true,
+        editSettings = function(s)
+            assert(s.props.exposurePoints == 7 and s.props.luminanceHigh == 40)
+            for _, control in ipairs(Model.extraControls()) do assert(s.props[control.id .. 'Enabled'] == false) end
+            assert(s.props.skipProcessed == false and s.props.skipManualNR == false and s.props.skipAIDenoise == false)
+        end }
+    unchanged(state)
+    assert(state.prefs.profilesV1[key].colorEnabled == false)
 end)
 
 print(string.format('\n%d Main workflow tests passed under %s; no Lightroom operations performed.', passed, _VERSION))

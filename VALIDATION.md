@@ -1,6 +1,25 @@
 # Validation
 
-## Automated checks
+## Version 0.2 review and runtime checks — October 16, 2026
+
+An independent Astra review inspected the full implementation and tests. The reliability findings, fixes, and non-blocking follow-ups are recorded in [REVIEW.md](REVIEW.md).
+
+- **41 model/batch checks**, **25 skip/integration checks**, **11 Main workflow checks**, and the strict SDK self-test harness pass under Lua 5.1 and Lua 5.5. The harnesses are automated doubles, not application proof.
+- A private Sony a7 IV DNG already imported for development was used in Lightroom Classic **15.6 on macOS**. Its original state was snapshotted before this review test, and restored afterward.
+- Actual Lightroom write/readback confirmed sharpening masking **35**, contrast **−12**, clarity **−8**, and texture **−6**, alongside the existing NR calculation. Every other returned develop setting matched its pre-apply value. A second calculation produced no changes.
+- The snapshot-based processed-photo option skipped that test photo. A separate actual snapshot-restore check changed all four new controls on that private copy, restored the snapshot, and confirmed all six controls exactly matched their pre-test values.
+- On that same private DNG, the public Lightroom controller enabled AI Denoise at **20** for testing. Lightroom reported Denoise active, and `getDevelopSettings()` returned an Enhance record in `FilterList.Filters` with `FilterID=1` and the title `$$$/CRaw/Filter/Title/Denoise=Denoise`. The plugin classified it as applied and skipped the photo in preview.
+- Disabling Denoise cleared `FilterList`. The remembered amount remained 20, but the plugin correctly classified the photo as no active Denoise. The plugin's normal operation never enables AI Denoise; that action was limited to the private test helper.
+- The original user's photo's entire returned settings table was unchanged, and the original sources, selection, and module were restored. Temporary test collections were removed. Private dumps and the DNG are excluded from Git and release assets.
+- The expanded native dialog opened successfully. All added controls and all three skip checkboxes were visibly off. Scrolling reached every option. Direct numeric entry of Texture **−4** appeared correctly in preview; cancelling applied no adjustment. The temporary test profile was restored, and a subsequent preview reported zero changes. Direct ISO entry **6400** worked after explicit native input bounds were added.
+
+### AI skip scope
+
+Modern, non-destructive Denoise detection has direct runtime evidence on Lightroom Classic 15.6 with the tested Sony DNG. Explicit nested Denoise flags and unknown/malformed enhancement cases are additionally covered by automated tests. Uncertain enhancement records are skipped when the AI option is enabled, which can conservatively skip other Enhance operations too. Raw Details/Super Resolution without Denoise have not been tested live. Legacy baked enhanced DNGs are recognized only if Lightroom exposes `EnhanceDenoiseAlreadyApplied`; that older workflow is not runtime-verified and may expose no marker. Do not rely on this option as a universal detector for old enhanced DNGs.
+
+The manual-NR option detects slider differences from documented baseline values, including presets/import defaults. It cannot establish that a person made a manual edit. The processed-photo option uses recovery-snapshot presence, including old/undone/interrupted runs; it does not claim a confirmed processing-history database.
+
+## Original v0.1 automated checks
 
 - 25 model/batch tests cover linear and logarithmic interpolation, exposure/shadow bonuses, caps, rerun behavior, excluded formats, unavailable inputs, metadata API routing, preview without writes, narrow patches, preservation of unrelated settings, snapshot failures, stale previews, a busy catalog, unconfirmed readback, and cancellation.
 - All plugin/test files pass Lua 5.1 syntax checks. The 25 tests pass under Lua 5.1.5 and Lua 5.5.1.
@@ -47,4 +66,4 @@ Catalog backups, customer paths, local runtime reports, and screenshots are priv
 
 ## Limits
 
-Windows, older Lightroom versions, cameras/formats beyond the tested Sony DNG and generated JPEGs, AI Denoise interactions, and subjective noise/detail quality have not been verified. A full 1,481-photo write/performance test was not run on customer photos. The plugin deliberately sets manual NR only. No automatic HDR-DNG exclusion is implemented in this first version.
+Windows, older Lightroom versions, cameras/formats beyond the tested Sony DNG and generated JPEGs, legacy baked AI-Denoise DNG detection, and subjective noise/detail quality have not been verified. A full 1,481-photo write/performance test was not run on customer photos. The plugin changes only the enabled manual NR, sharpening mask, contrast, clarity, and texture controls. It does not run AI processing in normal operation. No automatic HDR-DNG exclusion is implemented in this first version.

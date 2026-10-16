@@ -10,3 +10,4 @@ jobs:
       - run: lua5.1 tests/run.lua
       - run: lua5.1 tests/sdk_contract.lua
       - run: lua5.1 tests/main_workflow.lua
+      - run: lua5.1 tests/skip_policy.lua

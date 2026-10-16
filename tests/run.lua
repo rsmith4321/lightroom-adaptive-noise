@@ -18,7 +18,8 @@ end
 local function equal(a, b) assert(a == b, tostring(a) .. ' ~= ' .. tostring(b)) end
 local function sample(overrides)
     local p = { cameraKey = 'test', format = 'RAW', iso = 3250, exposure = 0,
-        shadows = 0, luminance = 0, color = 25, processVersion = '15.4' }
+        shadows = 0, luminance = 0, color = 25, mask = 0, contrast = 17,
+        clarity = 0, texture = 0, processVersion = '15.4' }
     for k, v in pairs(overrides or {}) do p[k] = v end
     return p
 end
@@ -32,6 +33,7 @@ local function mockPhoto(overrides)
         Exposure2012 = 2, Shadows2012 = 30, LuminanceSmoothing = 0,
         ColorNoiseReduction = 25, ProcessVersion = '15.4',
         CropTop = 0.2, Temperature = 5100, Contrast2012 = 17,
+        SharpenEdgeMasking = 0, Clarity2012 = 0, Texture = 0,
         Masking = { original = true },
     }, snapshots = {}, patchCalls = 0 }
     for k, v in pairs(overrides or {}) do photo[k] = v end
@@ -60,7 +62,9 @@ local function mockPhoto(overrides)
         self.patchCalls = self.patchCalls + 1
         assert(next(self.snapshots), 'Must snapshot before applying')
         for k, v in pairs(patch) do
-            assert(k == 'LuminanceSmoothing' or k == 'ColorNoiseReduction', 'Unrelated setting in patch')
+            assert(k == 'LuminanceSmoothing' or k == 'ColorNoiseReduction'
+                or k == 'SharpenEdgeMasking' or k == 'Contrast2012'
+                or k == 'Clarity2012' or k == 'Texture', 'Unrelated setting in patch')
             if not self.ignoreWrite then self.settings[k] = v end
         end
         if self.throwAfterWrite then error('Simulated write exception') end
@@ -142,6 +146,135 @@ end)
 test('log scale midpoint uses stops', function()
     equal(Model.calculate(sample { iso = 800 }, config { logarithmic = true }).LuminanceSmoothing, 25)
 end)
+test('extra adjustment defaults preserve the original NR behavior', function()
+    local c = config()
+    for _, control in ipairs(Model.extraControls()) do
+        local id = control.id
+        equal(c[id .. 'Enabled'], false)
+        equal(c[id .. 'Low'], 0); equal(c[id .. 'High'], 0); equal(c[id .. 'Cap'], 100)
+        equal(c[id .. 'ExposurePoints'], 0); equal(c[id .. 'ShadowPoints'], 0)
+    end
+    equal(c.luminanceLow, 0); equal(c.luminanceHigh, 50); equal(c.exposurePoints, 5)
+    equal(c.shadowPoints, 1); equal(c.colorLow, 25); equal(c.colorHigh, 40)
+end)
+test('extra adjustments work when both NR controls are disabled', function()
+    local p = assert(Model.calculate(sample(), config {
+        luminanceEnabled = false, colorEnabled = false, maskEnabled = true,
+        maskLow = 10, maskHigh = 70,
+    }))
+    equal(p.SharpenEdgeMasking, 40); equal(p.LuminanceSmoothing, nil); equal(p.ColorNoiseReduction, nil)
+end)
+test('signed targets allow negative values and decreasing ISO curves', function()
+    local c = config { luminanceEnabled = false, colorEnabled = false,
+        contrastEnabled = true, contrastLow = 40, contrastHigh = -80,
+        clarityEnabled = true, clarityLow = -80, clarityHigh = -40,
+        textureEnabled = true, textureLow = 50, textureHigh = -50 }
+    local p = assert(Model.calculate(sample(), c))
+    equal(p.Contrast2012, -20); equal(p.Clarity2012, -60); equal(p.Texture, nil)
+    p = assert(Model.calculate(sample { iso = 25600 }, c))
+    equal(p.Contrast2012, -80); equal(p.Clarity2012, -40); equal(p.Texture, -50)
+    p = assert(Model.calculate(sample { iso = 50 }, c))
+    equal(p.Contrast2012, 40); equal(p.Clarity2012, -80); equal(p.Texture, 50)
+end)
+test('signed coefficients use positive exposure and shadows to form fresh targets', function()
+    local c = config { luminanceEnabled = false, colorEnabled = false,
+        contrastEnabled = true, contrastLow = 40, contrastHigh = 0,
+        contrastExposurePoints = -5, contrastShadowPoints = -2,
+        clarityEnabled = true, clarityExposurePoints = 4, clarityShadowPoints = -3 }
+    local input = sample { exposure = 2, shadows = 30, contrast = 88, clarity = -70 }
+    local p = assert(Model.calculate(input, c))
+    equal(p.Contrast2012, 4); equal(p.Clarity2012, -1)
+    input.contrast, input.clarity = p.Contrast2012, p.Clarity2012
+    local again = assert(Model.calculate(input, c))
+    equal(next(again), nil)
+    p = assert(Model.calculate(sample { exposure = -2, shadows = -30 }, c))
+    equal(p.Contrast2012, 20); equal(p.Clarity2012, nil)
+end)
+test('extra caps limit positive and negative magnitude after bonuses', function()
+    local p = assert(Model.calculate(sample { exposure = 5, shadows = 100 }, config {
+        maskEnabled = true, maskLow = 10, maskHigh = 50, maskCap = 45.5,
+        maskExposurePoints = 10, maskShadowPoints = 2,
+        contrastEnabled = true, contrastExposurePoints = -20, contrastCap = 31.5,
+        clarityEnabled = true, clarityExposurePoints = 20, clarityCap = 27.5,
+        textureEnabled = true, textureHigh = -100, textureCap = 0,
+    }))
+    equal(p.SharpenEdgeMasking, 45); equal(p.Contrast2012, -31); equal(p.Clarity2012, 27)
+    equal(p.Texture, nil)
+end)
+test('extra adjustments use the shared logarithmic ISO interpolation', function()
+    local p = assert(Model.calculate(sample { iso = 800 }, config {
+        logarithmic = true, maskEnabled = true, maskLow = 20, maskHigh = 80,
+        contrastEnabled = true, contrastLow = 80, contrastHigh = -40,
+    }))
+    equal(p.SharpenEdgeMasking, 50); equal(p.Contrast2012, 20)
+end)
+test('disabled extra controls are never added to the patch', function()
+    local input = sample { mask = 99, contrast = -55, clarity = -45, texture = 85 }
+    local p = assert(Model.calculate(input, config {
+        maskLow = 20, maskHigh = 80, contrastLow = -20, contrastHigh = 40,
+        clarityLow = -50, clarityHigh = 30, textureLow = -90, textureHigh = -80,
+    }))
+    equal(p.SharpenEdgeMasking, nil); equal(p.Contrast2012, nil)
+    equal(p.Clarity2012, nil); equal(p.Texture, nil)
+end)
+test('unavailable enabled extra adjustment skips the whole photo', function()
+    for _, control in ipairs(Model.extraControls()) do
+        for _, bad in ipairs({ false, 0/0, math.huge }) do
+            local input = sample(); input[control.id] = bad
+            local p, why = Model.calculate(input, config { [control.id .. 'Enabled'] = true })
+            equal(p, nil); equal(why, control.label .. ' control unavailable')
+        end
+        local input = sample(); input[control.id] = nil
+        equal(Model.calculate(input, config { [control.id .. 'Enabled'] = true }), nil)
+    end
+end)
+test('signed nonzero coefficients require their exposure and shadows inputs', function()
+    local input = sample(); input.exposure = nil; input.shadows = nil
+    local c = config { luminanceEnabled = false, colorEnabled = false, contrastEnabled = true,
+        contrastLow = -10, contrastHigh = -30 }
+    equal(assert(Model.calculate(input, c)).Contrast2012, -20)
+    c.contrastExposurePoints = -1
+    local p, why = Model.calculate(input, c); equal(p, nil); equal(why, 'Exposure setting unavailable')
+    c.contrastExposurePoints = 0; c.contrastShadowPoints = -1
+    p, why = Model.calculate(input, c); equal(p, nil); equal(why, 'Shadows setting unavailable')
+end)
+test('extra profile fields validate ranges, booleans, and finite values', function()
+    for _, control in ipairs(Model.extraControls()) do
+        for _, suffix in ipairs({ 'Low', 'High', 'Cap', 'ExposurePoints', 'ShadowPoints' }) do
+            for _, invalid in ipairs({ 101, -101, math.huge, 0/0, '10' }) do
+                equal(Model.validate(config { [control.id .. suffix] = invalid }), nil)
+            end
+            local c = config(); c[control.id .. suffix] = nil
+            equal(Model.validate(c), nil)
+        end
+        equal(Model.validate(config { [control.id .. 'Enabled'] = 1 }), nil)
+        equal(Model.validate(config { [control.id .. 'Cap'] = -1 }), nil)
+    end
+    equal(Model.validate(config { maskLow = 50, maskHigh = 20 }), nil)
+    equal(Model.validate(config { maskExposurePoints = -1 }), nil)
+    equal(Model.validate(config { maskShadowPoints = -1 }), nil)
+    assert(Model.validate(config { contrastLow = 100, contrastHigh = -100,
+        clarityExposurePoints = -100, textureShadowPoints = -100 }))
+end)
+test('mixed adjustments produce only the six whitelisted develop keys', function()
+    local p = assert(Model.calculate(sample(), config {
+        maskEnabled = true, maskHigh = 80, contrastEnabled = true, contrastHigh = -60,
+        clarityEnabled = true, clarityHigh = 60, textureEnabled = true, textureHigh = -80,
+    }))
+    local allowed = { LuminanceSmoothing = true, ColorNoiseReduction = true,
+        SharpenEdgeMasking = true, Contrast2012 = true, Clarity2012 = true, Texture = true }
+    local count = 0
+    for key in pairs(p) do assert(allowed[key], 'Unexpected develop key ' .. key); count = count + 1 end
+    equal(count, 6)
+end)
+test('changes to every extra preview input are stale', function()
+    for _, control in ipairs(Model.extraControls()) do
+        local before, after = sample(), sample()
+        assert(Model.sameInputs(before, after))
+        after[control.id] = after[control.id] + 1
+        equal(Model.sameInputs(before, after), false)
+    end
+end)
 test('camera keys do not collide', function()
     assert(Model.cameraKey('ab', 'c') ~= Model.cameraKey('a', 'bc'))
     equal(Model.cameraKey('', ''), nil)
@@ -178,6 +311,50 @@ test('busy catalog does not claim success', function()
     local result = Batch.apply(catalog(true), planPhoto(photo), nil, 'test')
     equal(result.failed, 1); equal(result.applied, 0); equal(photo.patchCalls, 0)
 end)
+test('Cancel during catalog wait prevents the pending photo and remaining batch', function()
+    local first, second = mockPhoto(), mockPhoto()
+    local plan = planPhoto(first)
+    plan.changes[2] = planPhoto(second).changes[1]
+    local cancelled, done, gates = false, false, 0
+    local waitingCatalog = { withWriteAccessDo = function(_, _, callback)
+        gates = gates + 1
+        cancelled = true -- User clicked Cancel while another operation held the gate.
+        callback()
+        return 'executed'
+    end }
+    local progress = { isCanceled = function() return cancelled end,
+        setCaption = function() end, setPortionComplete = function() end,
+        done = function() done = true end }
+    local result = Batch.apply(waitingCatalog, plan, progress, 'cancel-wait')
+    equal(result.cancelled, 2); equal(result.applied, 0); equal(gates, 1)
+    equal(first.patchCalls, 0); equal(second.patchCalls, 0)
+    equal(next(first.snapshots), nil); equal(next(second.snapshots), nil); assert(done)
+end)
+test('exception during a partial SDK write is unverified and retains recovery snapshot', function()
+    local photo = mockPhoto { throwAfterWrite = true }
+    local result = Batch.apply(catalog(), planPhoto(photo), nil, 'partial-write')
+    equal(result.unverified, 1); equal(result.failed, 0); equal(result.applied, 0)
+    equal(photo.settings.LuminanceSmoothing, 38)
+    equal(photo.snapshots['Before Adaptive Noise partial-write'].LuminanceSmoothing, 0)
+end)
+test('readback exception after write is unverified', function()
+    local photo = mockPhoto()
+    local plan = planPhoto(photo)
+    function photo:getDevelopSettings()
+        if self.patchCalls > 0 then error('Readback unavailable') end
+        return self.settings
+    end
+    local result = Batch.apply(catalog(), plan, nil, 'readback-error')
+    equal(result.unverified, 1); equal(result.failed, 0); equal(result.applied, 0)
+end)
+test('mixed batch continues after failed and uncertain photos with accurate totals', function()
+    local photos = { mockPhoto { snapshotFail = true }, mockPhoto { throwAfterWrite = true }, mockPhoto() }
+    local plan = { changes = {} }
+    for i, photo in ipairs(photos) do plan.changes[i] = planPhoto(photo).changes[1] end
+    local result = Batch.apply(catalog(), plan, nil, 'mixed')
+    equal(result.failed, 1); equal(result.unverified, 1); equal(result.applied, 1)
+    equal(photos[1].patchCalls, 0); equal(photos[3].settings.LuminanceSmoothing, 38)
+end)
 test('unconfirmed readback is reported separately', function()
     local photo = mockPhoto { ignoreWrite = true }
     local result = Batch.apply(catalog(), planPhoto(photo), nil, 'test')
@@ -193,6 +370,9 @@ test('disabled and unreadable photos have explicit skip reasons', function()
     equal(plan.skipped, 1); equal(plan.reasons['Camera profile disabled'], 1)
     plan = Batch.plan({ { input = {}, error = 'Could not read develop settings' } }, {})
     equal(plan.reasons['Could not read develop settings'], 1)
+    plan = planPhoto(photo, config { luminanceEnabled = false, colorEnabled = false })
+    equal(plan.skipped, 1); equal(plan.unchanged, 0)
+    equal(plan.reasons['All adjustment controls disabled'], 1)
 end)
 test('original screenshot settings can be reproduced', function()
     local c = config { luminanceHigh = 40, luminanceCap = 40, exposurePoints = 5, shadowPoints = 1 }
