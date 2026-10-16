@@ -7,6 +7,7 @@ local Progress = import 'LrProgressScope'
 local Tasks = import 'LrTasks'
 local View = import 'LrView'
 local Date = import 'LrDate'
+local Http = import 'LrHttp'
 local Model = dofile(_PLUGIN.path .. '/NoiseModel.lua')
 local Access = dofile(_PLUGIN.path .. '/PhotoAccess.lua')
 local Batch = dofile(_PLUGIN.path .. '/Batch.lua')
@@ -92,54 +93,72 @@ Tasks.startAsyncTask(function()
         end)
         local f = View.osFactory()
         local bind = View.bind
-        local function number(key, minimum, maximum)
+        local function number(key, minimum, maximum, enabled)
             return f:edit_field { value = bind(key), precision = 2, width_in_chars = 7, immediate = true,
-                min = minimum or 0, max = maximum or 100 }
+                min = minimum or 0, max = maximum or 100, enabled = enabled and bind(enabled) or nil }
         end
-        -- Explicit rows keep this compatible with Lightroom's Lua 5.1 runtime.
-        local contentSpec = {
-            bind_to_object = props, spacing = 9,
-            f:static_text { title = #photos .. (#photos == 1 and ' selected photo.' or ' selected photos.') .. ' Settings are remembered separately for each camera.' },
-            f:row { f:static_text { title = 'Camera', width_in_chars = 27 }, f:popup_menu { value = bind 'camera', items = items, width_in_chars = 38 } },
-            f:checkbox { title = 'Enable this camera', value = bind 'enabled' },
-            f:checkbox { title = 'Also adjust non-RAW photos from this camera', value = bind 'includeNonRaw' },
-            f:separator { fill_horizontal = 1 },
-            f:row { f:static_text { title = 'ISO range', width_in_chars = 27 }, number('isoLow', 1, 10000000), f:static_text { title = 'to' }, number('isoHigh', 1, 10000000) },
-            f:checkbox { title = 'Use logarithmic ISO scale (unchecked = linear)', value = bind 'logarithmic' },
-            f:checkbox { title = 'Adjust luminance noise reduction', value = bind 'luminanceEnabled' },
-            f:row { f:static_text { title = 'Luminance at low / high ISO', width_in_chars = 27 }, number('luminanceLow'), number('luminanceHigh') },
-            f:row { f:static_text { title = 'Add per +1 Exposure stop', width_in_chars = 27 }, number('exposurePoints'), f:static_text { title = 'points' } },
-            f:row { f:static_text { title = 'Add per +10 Shadows', width_in_chars = 27 }, number('shadowPoints'), f:static_text { title = 'points' } },
-            f:row { f:static_text { title = 'Maximum luminance NR', width_in_chars = 27 }, number('luminanceCap') },
-            f:separator { fill_horizontal = 1 },
-            f:checkbox { title = 'Adjust color noise reduction (ISO only)', value = bind 'colorEnabled' },
-            f:row { f:static_text { title = 'Color at low / high ISO', width_in_chars = 27 }, number('colorLow'), number('colorHigh') },
-            f:row { f:static_text { title = 'Maximum color NR', width_in_chars = 27 }, number('colorCap') },
-            f:separator { fill_horizontal = 1 },
+        local function label(title)
+            return f:static_text { title = title, width_in_chars = 29 }
+        end
+        local function section(title, children)
+            children.title, children.spacing, children.margin = title, 8, 14
+            children.fill_horizontal = 1
+            return f:group_box(children)
+        end
+        local function header()
+            return f:row { spacing = 14, fill_horizontal = 1,
+                f:picture { value = _PLUGIN:resourceId('assets/shootcal-logo.png'), width = 48, height = 48 },
+                f:column { spacing = 3,
+                    f:static_text { title = 'Adaptive Noise', font = '<system/bold>', size = 'large' },
+                    f:static_text { title = 'ISO-aware adjustments for Lightroom Classic', size = 'small' },
+                },
+                f:spacer { fill_horizontal = 1 },
+                f:push_button { title = 'Developed by ShootCal',
+                    action = function() Http.openUrlInBrowser('https://shootcal.com/') end },
+            }
+        end
+        local contentSpec = { bind_to_object = props, spacing = 14, margin = 16,
+            section('Camera and ISO', {
+                f:row { label('Camera'), f:popup_menu { value = bind 'camera', items = items, width_in_chars = 38 } },
+                f:checkbox { title = 'Enable this camera', value = bind 'enabled' },
+                f:checkbox { title = 'Also adjust non-RAW photos from this camera', value = bind 'includeNonRaw' },
+                f:row { label('ISO range'), number('isoLow', 1, 10000000), f:static_text { title = 'to' }, number('isoHigh', 1, 10000000) },
+                f:checkbox { title = 'Use logarithmic ISO scale (unchecked = linear)', value = bind 'logarithmic' },
+            }),
+            section('Luminance noise reduction', {
+                f:checkbox { title = 'Adjust luminance noise reduction', value = bind 'luminanceEnabled' },
+                f:row { label('At low / high ISO'), number('luminanceLow', nil, nil, 'luminanceEnabled'), number('luminanceHigh', nil, nil, 'luminanceEnabled') },
+                f:row { label('Per +1 Exposure / +10 Shadows'), number('exposurePoints', nil, nil, 'luminanceEnabled'), number('shadowPoints', nil, nil, 'luminanceEnabled') },
+                f:row { label('Maximum luminance NR'), number('luminanceCap', nil, nil, 'luminanceEnabled') },
+            }),
+            section('Color noise reduction', {
+                f:checkbox { title = 'Adjust color noise reduction (ISO only)', value = bind 'colorEnabled' },
+                f:row { label('At low / high ISO'), number('colorLow', nil, nil, 'colorEnabled'), number('colorHigh', nil, nil, 'colorEnabled') },
+                f:row { label('Maximum color NR'), number('colorCap', nil, nil, 'colorEnabled') },
+            }),
         }
         for _, control in ipairs(Model.extraControls()) do
             local id = control.id
-            contentSpec[#contentSpec + 1] = f:checkbox { title = 'Adjust ' .. control.label, value = bind(id .. 'Enabled') }
-            contentSpec[#contentSpec + 1] = f:row {
-                f:static_text { title = 'At low / high ISO', width_in_chars = 27 }, number(id .. 'Low', control.min, control.max), number(id .. 'High', control.min, control.max),
-                f:static_text { title = control.min < 0 and '(-100 to +100)' or '(0 to 100)' },
-            }
-            contentSpec[#contentSpec + 1] = f:row {
-                f:static_text { title = 'Per +1 Exposure / +10 Shadows', width_in_chars = 27 }, number(id .. 'ExposurePoints', control.min, control.max), number(id .. 'ShadowPoints', control.min, control.max),
-            }
-            contentSpec[#contentSpec + 1] = f:row {
-                f:static_text { title = control.min < 0 and 'Maximum magnitude' or 'Maximum value', width_in_chars = 27 }, number(id .. 'Cap'),
-            }
-            contentSpec[#contentSpec + 1] = f:separator { fill_horizontal = 1 }
+            contentSpec[#contentSpec + 1] = section(control.label, {
+                f:checkbox { title = 'Adjust ' .. control.label, value = bind(id .. 'Enabled') },
+                f:row { label('At low / high ISO'), number(id .. 'Low', control.min, control.max, id .. 'Enabled'), number(id .. 'High', control.min, control.max, id .. 'Enabled'),
+                    f:static_text { title = control.min < 0 and '(-100 to +100)' or '(0 to 100)' } },
+                f:row { label('Per +1 Exposure / +10 Shadows'), number(id .. 'ExposurePoints', control.min, control.max, id .. 'Enabled'), number(id .. 'ShadowPoints', control.min, control.max, id .. 'Enabled') },
+                f:row { label(control.min < 0 and 'Maximum magnitude' or 'Maximum value'), number(id .. 'Cap', nil, nil, id .. 'Enabled') },
+            })
         end
-        contentSpec[#contentSpec + 1] = f:static_text { title = 'Optional skips (apply to all cameras in this batch)' }
-        contentSpec[#contentSpec + 1] = f:checkbox { title = 'Skip photos previously processed by Adaptive Noise (recovery snapshot present)', value = bind 'skipProcessed' }
-        contentSpec[#contentSpec + 1] = f:checkbox { title = 'Skip photos with existing manual noise reduction adjustments', value = bind 'skipManualNR' }
-        contentSpec[#contentSpec + 1] = f:static_text { title = 'Manual NR means slider values differ from usual defaults; this includes presets and import settings.\nLuminance 0; Color 25 for RAW/DNG, 0 for other formats; Detail 50, Contrast 0, Smoothness 50.', height_in_lines = 2 }
-        contentSpec[#contentSpec + 1] = f:checkbox { title = 'Skip photos with AI Denoise applied (also skips uncertain AI enhancement state)', value = bind 'skipAIDenoise' }
-        contentSpec[#contentSpec + 1] = f:static_text { title = 'All controls share the ISO range above and use positive Exposure/Shadows inputs.\nEach run sets fresh targets. Only enabled controls change, with a recovery snapshot first.', width_in_chars = 90, height_in_lines = 2 }
-        local content = f:column { bind_to_object = props,
-            f:scrolled_view { width = 850, height = 560, f:column(contentSpec) },
+        contentSpec[#contentSpec + 1] = section('Optional skips', {
+            f:static_text { title = 'Apply to all cameras in this batch. Each option is off by default.', size = 'small' },
+            f:checkbox { title = 'Skip photos previously processed by Adaptive Noise (recovery snapshot present)', value = bind 'skipProcessed' },
+            f:checkbox { title = 'Skip photos with existing manual noise reduction adjustments', value = bind 'skipManualNR' },
+            f:static_text { title = 'Manual NR includes presets and import settings that differ from usual defaults.\nLuminance 0; Color 25 for RAW/DNG, 0 otherwise; Detail 50, Contrast 0, Smoothness 50.', height_in_lines = 2, size = 'small' },
+            f:checkbox { title = 'Skip photos with AI Denoise applied (also skips uncertain AI enhancement state)', value = bind 'skipAIDenoise' },
+        })
+        local content = f:column { bind_to_object = props, spacing = 12, margin = 8,
+            header(),
+            f:static_text { title = #photos .. (#photos == 1 and ' selected photo' or ' selected photos') .. '  |  Settings saved separately for each camera', size = 'small' },
+            f:scrolled_view { width = 850, height = 500, f:column(contentSpec) },
+            f:static_text { title = 'Preview to review, or Process to apply. Each changed photo gets a recovery snapshot.', size = 'small' },
         }
         local previewRequested
         while true do
@@ -168,7 +187,9 @@ Tasks.startAsyncTask(function()
         prefs.skipOptionsV1 = options
         local plan = Batch.plan(records, profiles, options)
         local summary = #plan.changes .. ' to change; ' .. plan.unchanged .. ' already match; ' .. plan.skipped .. ' skipped.'
-        local lines = { summary, '', reasonLines(plan.reasons), '' }
+        local lines = { summary }
+        local reasons = reasonLines(plan.reasons)
+        if reasons ~= '' then lines[#lines + 1] = reasons end
         for i = 1, math.min(#plan.changes, 100) do
             local item = plan.changes[i]
             local line = string.format('%s  |  ISO %s  Exp %s  Shadows %s  |  Luminance %s -> %s  Color %s -> %s',
@@ -185,10 +206,13 @@ Tasks.startAsyncTask(function()
         if #plan.changes > 100 then lines[#lines + 1] = 'Showing the first 100 changes of ' .. #plan.changes .. '.' end
         if #plan.changes == 0 then Dialogs.message('Adaptive Noise: no changes', table.concat(lines, '\n'), 'info'); return end
         if previewRequested then
-            local preview = f:column { spacing = 9,
+            local preview = f:column { spacing = 12, margin = 8,
+                header(),
                 f:static_text { title = summary },
-                f:scrolled_view { width = 780, height = 320,
-                    f:static_text { title = table.concat(lines, '\n'), width_in_chars = 170, height_in_lines = #lines + 1 },
+                f:scrolled_view { width = 850, height = math.min(320, math.max(100, #lines * 18 + 32)),
+                    f:column { margin = 16,
+                        f:static_text { title = table.concat(lines, '\n', 2), width_in_chars = 170, height_in_lines = #lines },
+                    },
                 },
                 f:static_text { title = 'Process replaces the enabled adjustment values, including previous manual edits.\nA before snapshot is saved for each changed photo. Cancel leaves all photos unchanged.', height_in_lines = 2 },
             }

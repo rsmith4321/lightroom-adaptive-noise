@@ -1,5 +1,13 @@
 # Validation
 
+## Version 1.1.1 presentation checks — October 16, 2026
+
+- Added the existing ShootCal logo, project-name header, and an explicit Developed by ShootCal button linking to `https://shootcal.com/`. The same logo and attribution appear in the GitHub README.
+- Lightroom Classic 15.6 on macOS rendered padded settings sections and the inset scroll area, including the bottom skip options. Turning Texture on activated its numeric fields; cancelling discarded that change.
+- A temporary luminance target produced a read-only preview with the branded header and report padding. It was cancelled without processing, then the original camera target was restored; the subsequent preview reported **0 to change; 1 already match; 0 skipped**.
+- **41 model/batch checks**, **25 skip/integration checks**, **15 workflow checks**, and the SDK contract harness pass under Lua 5.1 and Lua 5.5. The added workflow check verifies that the attribution opens the correct URL without catalog writes. These remain automated doubles, not Windows runtime evidence.
+
+
 ## Version 1.1 workflow checks — October 16, 2026
 
 - Process is the primary settings action and bypasses the preview dialog. Preview remains a separate button and requires Process before writing. Both use the existing validation and protected batch implementation.

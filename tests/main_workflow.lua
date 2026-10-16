@@ -102,7 +102,7 @@ local function run(options)
 
     local factory = {}
     for _, kind in ipairs({ 'column', 'row', 'static_text', 'popup_menu',
-        'checkbox', 'separator', 'edit_field', 'scrolled_view' }) do
+        'checkbox', 'separator', 'edit_field', 'scrolled_view', 'picture', 'spacer', 'push_button', 'group_box' }) do
         factory[kind] = function(_, specification)
             assert(specification.read_only == nil, 'Undocumented read_only property returned')
             specification.kind = kind
@@ -139,6 +139,7 @@ local function run(options)
             end },
         LrView = { osFactory = function() return factory end,
             bind = function(key) return { bindingKey = key } end },
+        LrHttp = { openUrlInBrowser = function(url) state.openedUrl = url end },
         LrDate = { currentTime = function() return 1234567.123456 end },
     }
     modules.LrDialogs = {
@@ -185,7 +186,7 @@ local function run(options)
             return 'ok'
         end,
     }
-    _PLUGIN = { path = pluginPath }
+    _PLUGIN = { path = pluginPath, resourceId = function(_, path) return pluginPath .. '/' .. path end }
     function import(name) return assert(modules[name], 'Unexpected SDK import: ' .. name) end
     local ok, message = pcall(function() dofile(pluginPath .. '/Main.lua') end)
     _PLUGIN, import = savedPlugin, savedImport
@@ -204,6 +205,20 @@ local function unchanged(state)
     assert(state.gates == 0 and state.snapshots == 0 and state.writes == 0,
         'Cancellation/empty selection mutated photos')
 end
+
+test('ShootCal attribution opens the public project without processing photos', function()
+    local state = run { cancelSettings = true, editSettings = function(s, dialog)
+        local link
+        visit(dialog.contents, function(control)
+            if control.kind == 'push_button' and control.title == 'Developed by ShootCal' then link = control end
+        end)
+        assert(link, 'ShootCal attribution missing')
+        link.action()
+        assert(s.openedUrl == 'https://shootcal.com/')
+        assert(s.writes == 0 and s.snapshots == 0 and s.gates == 0)
+    end }
+    unchanged(state)
+end)
 
 test('no selection never requests whole-filmstrip target photos', function()
     local state = run { noSelection = true }

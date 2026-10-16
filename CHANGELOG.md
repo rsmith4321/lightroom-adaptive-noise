@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 — 2026-10-16
+
+- Add the ShootCal logo, plugin name, and a Developed by ShootCal link above the settings.
+- Give the scrolling area inner padding and group related settings into padded sections with consistent label alignment.
+- Dim numeric fields when their adjustment is off, retaining the saved values.
+- Add ShootCal attribution and a project link to GitHub's README.
+
 ## 1.1.0 — 2026-10-16
 
 - Make Process the primary action, applying the chosen settings without a required preview.

@@ -1,4 +1,10 @@
-# Lightroom Adaptive Noise
+<a href="https://shootcal.com/"><img src="AdaptiveNoise.lrplugin/assets/shootcal-logo.png" alt="ShootCal" width="64" height="64"></a>
+
+# Adaptive Noise for Lightroom Classic
+
+**Developed by [ShootCal](https://shootcal.com/)** · Tools built by a working photographer.
+
+Explore [ShootCal](https://shootcal.com/) for photography scheduling, studio management, client galleries, and websites.
 
 ## [Download latest version — ready-to-install ZIP](https://github.com/rsmith4321/lightroom-adaptive-noise/releases/latest/download/AdaptiveNoise.zip)
 
@@ -19,7 +25,7 @@ Select photos, choose your camera's settings, then click **Process** to apply th
 
 To update, replace the existing plugin folder with the extracted `AdaptiveNoise.lrplugin` folder, then click **Reload Plug-in** in Plug-in Manager. Keep the same plugin identity to retain saved camera settings. All four added controls and all three skip options start **off**; existing NR settings are retained.
 
-This is for Lightroom **Classic**, not the cloud-based Lightroom application. It runs locally without a login, registration, subscription, network calls, or an external noise-reduction service. It uses Lightroom's manual develop controls; it does not run AI Denoise.
+This is for Lightroom **Classic**, not the cloud-based Lightroom application. Photo processing runs locally without a login, registration, subscription, or an external noise-reduction service. The optional Developed by ShootCal button opens [shootcal.com](https://shootcal.com/) in your browser. It uses Lightroom's manual develop controls; it does not run AI Denoise.
 
 ## Version 1.1
 
